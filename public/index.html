@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cody – coding mentor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Source+Serif+4:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f3f1ec; --panel: #fbfaf7; --ink: #1d2433; --muted: #6b7384;
+  --line: #dcd8cf; --user: #1f3a5f; --user-ink: #f6f8fb; --code-bg: #1d2433; --code-ink: #e7ecf5;
+  --err-bg: #fbe9e7; --err-ink: #8a2a1f; --accent: #2b6cb0;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11151d; --panel: #181e29; --ink: #e6e9f0; --muted: #8f98ab; --line: #2b3342;
+    --user: #3b6aa8; --user-ink: #fff; --code-bg: #0c1017; --code-ink: #dfe6f3; --err-bg: #3a1f1c; --err-ink: #f2b8b0; --accent: #6aa5e8; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: "Source Serif 4", Georgia, serif; font-size: 17px; line-height: 1.6;
+  padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0); }
+.app { max-width: 760px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; background: var(--panel);
+  border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+header { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+h1 { font: 700 22px "Bricolage Grotesque", system-ui, sans-serif; margin: 0; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--muted); font-size: 14px; }
+button { font: 600 14px "Bricolage Grotesque", system-ui, sans-serif; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink); padding: 8px 14px; }
+button:hover { border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#log { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; }
+.msg.user { align-self: flex-end; background: var(--user); color: var(--user-ink); border-bottom-right-radius: 4px; }
+.msg.bot { align-self: flex-start; border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.msg.error { align-self: flex-start; background: var(--err-bg); color: var(--err-ink); border: 1px solid transparent; }
+.msg.error button { margin-top: 8px; color: inherit; border-color: currentColor; }
+.msg pre { background: var(--code-bg); color: var(--code-ink); padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; white-space: pre; }
+.msg code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px; }
+.msg :not(pre) > code { background: rgba(127,127,127,.18); padding: 1px 5px; border-radius: 4px; }
+.empty { margin: auto; text-align: center; color: var(--muted); max-width: 420px; }
+.empty .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+.dots span { display: inline-block; width: 7px; height: 7px; margin: 0 2px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite; }
+.dots span:nth-child(2) { animation-delay: .15s; } .dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes bounce { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .dots span { animation: none; opacity: .7; } }
+form { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); }
+textarea { flex: 1; resize: none; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; max-height: 140px; }
+form button { background: var(--accent); color: #fff; border-color: transparent; padding: 0 20px; }
+form button:disabled { opacity: .55; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div><h1>Cody</h1><p>A coding mentor for beginners</p></div>
+    <button id="clear" type="button">New chat</button>
+  </header>
+  <main id="log" aria-live="polite"></main>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="Paste an error or ask a coding question" aria-label="Message"></textarea>
+    <button id="send" type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+const log = document.getElementById("log");
+const form = document.getElementById("form");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+let history = [];   // [{role, content}]
+let busy = false;
+
+const starters = ["What does \"undefined is not a function\" mean?", "Explain recursion with a tiny example", "How do I read a file in Python?"];
+
+function showEmpty() {
+  log.innerHTML = "";
+  const box = document.createElement("div");
+  box.className = "empty";
+  box.innerHTML = "<p>Ask about a concept or paste an error message and Cody will walk you through it.</p><div class='chips'></div>";
+  starters.forEach((s) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = s;
+    b.onclick = () => { input.value = s; form.requestSubmit(); };
+    box.querySelector(".chips").appendChild(b);
+  });
+  log.appendChild(box);
+}
+
+// Tiny Markdown renderer: code fences, `inline code`, **bold**, bullets, headings.
+// Everything is HTML-escaped first, so model output can never inject HTML.
+const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function render(text) {
+  return text
+    .split(/(```[\s\S]*?(?:```|$))/g)
+    .map((part) => {
+      if (part.startsWith("```")) {
+        const code = part.replace(/^```[^\n]*\n?/, "").replace(/```$/, "").replace(/\n$/, "");
+        return `<pre><code>${esc(code)}</code></pre>`;
+      }
+      return esc(part.replace(/^\n+|\n+$/g, ""))
+        .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/^#{1,4}\s+(.+)$/gm, "<strong>$1</strong>")
+        .replace(/^\s*[*-]\s+/gm, "\u2022 ");
+    })
+    .join("");
+}
+
+function addMsg(cls, html = "") {
+  document.querySelector(".empty")?.remove();
+  const el = document.createElement("div");
+  el.className = "msg " + cls;
+  el.innerHTML = html;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+function setBusy(v) {
+  busy = v; sendBtn.disabled = v; input.disabled = v;
+  if (!v) input.focus();
+}
+
+async function ask() {
+  const bot = addMsg("bot", '<span class="dots" aria-label="Cody is typing"><span></span><span></span><span></span></span>'); // loading state
+  let reply = "";
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error || "The server returned an error. Please try again.");
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const events = buf.split("\n\n");
+      buf = events.pop();
+      for (const raw of events) {
+        const event = /event: (\w+)/.exec(raw)?.[1];
+        const data = JSON.parse(/data: (.*)/.exec(raw)?.[1] || "{}");
+        if (event === "token") {
+          reply += data.text;
+          bot.innerHTML = render(reply);          // streaming: text appears as it is generated
+          log.scrollTop = log.scrollHeight;
+        } else if (event === "error") {
+          throw new Error(data.message);
+        }
+      }
+    }
+    history.push({ role: "assistant", content: reply });
+  } catch (err) {
+    bot.remove();
+    if (reply) addMsg("bot", render(reply));
+    const msg = err instanceof TypeError ? "Couldn't reach the server. Check your connection and try again." : err.message;
+    const e = addMsg("error");
+    e.textContent = msg;
+    const retry = document.createElement("button");
+    retry.type = "button"; retry.textContent = "Try again";
+    retry.onclick = () => { e.remove(); setBusy(true); ask().finally(() => setBusy(false)); };
+    e.appendChild(document.createElement("br")); e.appendChild(retry);
+  }
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text || busy) return;
+  input.value = ""; input.style.height = "auto";
+  history.push({ role: "user", content: text });
+  addMsg("user", render(text));
+  setBusy(true);
+  await ask();
+  setBusy(false);
+});
+
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+});
+input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = input.scrollHeight + "px"; });
+document.getElementById("clear").onclick = () => { if (!busy) { history = []; showEmpty(); } };
+
+showEmpty();
+</script>
+</body>
+</html>
